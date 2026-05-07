@@ -309,3 +309,81 @@ def gold_ceap_mensal_partido(silver):
         .sort_values(["ano", "mes", "total"], ascending=[True, True, False])
     )
     return out
+
+
+# ----------------------------------------------------------------------
+# Entregavel 5 - CPIs
+# ----------------------------------------------------------------------
+
+def gold_cpis(silver):
+    """Identifica orgaos que sao CPIs/CPMIs e calcula duracao.
+
+    Heuristica: filtro por nome contendo 'CPI', 'CPMI' ou 'inquerito'.
+    Limitacao conhecida: a API publica so expoe orgaos da legislatura corrente
+    ativos, entao CPIs encerradas historicas nao aparecem.
+    """
+    df = silver["orgaos"].copy()
+    mask = df["nome_orgao"].str.contains(
+        r"CPI|CPMI|Inqu[eé]rito", case=False, regex=True, na=False
+    )
+    cpis = df[mask].copy()
+    if cpis.empty:
+        return pd.DataFrame(columns=["id_orgao", "sigla_orgao", "nome_orgao",
+                                     "data_inicio", "data_fim", "duracao_dias",
+                                     "excedeu_prazo"])
+
+    cpis["data_inicio"] = pd.to_datetime(cpis["data_inicio"], errors="coerce")
+    cpis["data_fim"] = pd.to_datetime(cpis["data_fim"], errors="coerce")
+    cpis["duracao_dias"] = (cpis["data_fim"] - cpis["data_inicio"]).dt.days
+    # prazo regimental tipico de CPI = 180 dias (regimento)
+    cpis["excedeu_prazo"] = cpis["duracao_dias"] > 180
+
+    return cpis[[
+        "id_orgao", "sigla_orgao", "nome_orgao", "tipo_orgao",
+        "data_inicio", "data_fim", "duracao_dias", "excedeu_prazo",
+    ]].reset_index(drop=True)
+
+
+# ----------------------------------------------------------------------
+# Entregavel 6 - Engajamento
+# ----------------------------------------------------------------------
+
+def gold_engajamento_deputado(silver):
+    """Score simples de engajamento: presencas + votos validos.
+
+    Cada componente normalizado (min-max). Score = media dos componentes.
+    Versao basica - nao inclui discursos/requerimentos por enquanto.
+    """
+    dep = silver["deputados"][["id_deputado", "nome", "sigla_partido", "sigla_uf"]]
+
+    # presencas em eventos
+    presencas = (
+        silver["evento_deputados"]
+        .groupby("id_deputado").size().reset_index(name="n_presencas")
+    )
+
+    # votos (qualquer tipo)
+    votos = (
+        silver["votacao_votos"]
+        .groupby("id_deputado").size().reset_index(name="n_votos")
+    )
+
+    score = dep.merge(presencas, on="id_deputado", how="left") \
+               .merge(votos, on="id_deputado", how="left")
+    score[["n_presencas", "n_votos"]] = score[["n_presencas", "n_votos"]].fillna(0)
+
+    # normaliza min-max
+    def _norm(s):
+        rng = s.max() - s.min()
+        if rng == 0:
+            return s * 0.0
+        return (s - s.min()) / rng
+
+    score["presencas_norm"] = _norm(score["n_presencas"])
+    score["votos_norm"] = _norm(score["n_votos"])
+    score["engajamento"] = (score["presencas_norm"] + score["votos_norm"]) / 2
+
+    # percentil dentro do conjunto
+    score["percentil"] = score["engajamento"].rank(pct=True)
+
+    return score.sort_values("engajamento", ascending=False).reset_index(drop=True)
