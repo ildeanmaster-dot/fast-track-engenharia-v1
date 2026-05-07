@@ -69,3 +69,56 @@ def fato_despesa(silver):
     ]
     cols = [c for c in cols if c in df.columns]
     return df[cols]
+
+
+# ----------------------------------------------------------------------
+# Entregavel 1 - Atlas das Frentes
+# ----------------------------------------------------------------------
+
+def gold_atlas_frentes(silver):
+    """Junta frentes com membros e enriquece com partido/UF do deputado."""
+    fr = silver["frentes"][["id_frente", "nome_frente", "id_legislatura"]]
+    fm = silver["frente_membros"][["id_frente", "id_deputado"]]
+    dep = silver["deputados"][["id_deputado", "nome", "sigla_partido", "sigla_uf"]]
+    atlas = (
+        fm.merge(dep, on="id_deputado", how="left")
+          .merge(fr, on="id_frente", how="left")
+    )
+    return atlas
+
+
+def gold_frente_diversidade_hhi(atlas):
+    """Indice de Herfindahl por frente.
+
+    HHI = soma(quadrado da participacao de cada partido).
+    Baixo = mais diverso. Alto = concentrado num partido.
+    """
+    rows = []
+    for fid, grp in atlas.groupby("id_frente"):
+        total = len(grp)
+        if total == 0:
+            continue
+        partidos = grp["sigla_partido"].fillna("?").value_counts()
+        share = partidos / total
+        hhi = (share ** 2).sum()
+        rows.append({
+            "id_frente": fid,
+            "nome_frente": grp["nome_frente"].iloc[0],
+            "n_membros": int(total),
+            "n_partidos": int((partidos > 0).sum()),
+            "n_ufs": grp["sigla_uf"].fillna("?").nunique(),
+            "hhi": float(hhi),
+        })
+    return pd.DataFrame(rows).sort_values("hhi").reset_index(drop=True)
+
+
+def gold_deputados_em_n_frentes(atlas, top=20):
+    """Top deputados por numero de frentes em que aparecem."""
+    return (
+        atlas.groupby(["id_deputado", "nome", "sigla_partido", "sigla_uf"])
+             .size()
+             .reset_index(name="n_frentes")
+             .sort_values("n_frentes", ascending=False)
+             .head(top)
+             .reset_index(drop=True)
+    )
