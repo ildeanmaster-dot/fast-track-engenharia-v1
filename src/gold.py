@@ -387,3 +387,30 @@ def gold_engajamento_deputado(silver):
     score["percentil"] = score["engajamento"].rank(pct=True)
 
     return score.sort_values("engajamento", ascending=False).reset_index(drop=True)
+
+
+def gold_absenteismo_votacao(silver):
+    """Lista deputados que mais faltaram em votacoes (% de ausencia).
+
+    Considera todas as votacoes do periodo. Se um deputado nao tem voto
+    registrado em uma votacao, conta como ausencia.
+    """
+    dep = silver["deputados"][["id_deputado", "nome", "sigla_partido", "sigla_uf"]]
+    total_votacoes = silver["votacoes"]["id_votacao"].nunique()
+    if total_votacoes == 0:
+        return pd.DataFrame()
+
+    # quantas votacoes cada deputado participou
+    votou = (
+        silver["votacao_votos"]
+        .groupby("id_deputado")["id_votacao"]
+        .nunique()
+        .reset_index(name="n_votou")
+    )
+
+    out = dep.merge(votou, on="id_deputado", how="left")
+    out["n_votou"] = out["n_votou"].fillna(0).astype(int)
+    out["n_ausencias"] = total_votacoes - out["n_votou"]
+    out["taxa_ausencia"] = out["n_ausencias"] / total_votacoes
+
+    return out.sort_values("taxa_ausencia", ascending=False).reset_index(drop=True)
