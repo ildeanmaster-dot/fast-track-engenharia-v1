@@ -323,12 +323,19 @@ def gold_cpis(silver):
     ativos, entao CPIs encerradas historicas nao aparecem.
     """
     df = silver["orgaos"].copy()
-    mask = df["nome_orgao"].str.contains(
+    mask = df["nome_orgao"].fillna("").str.contains(
         r"CPI|CPMI|Inqu[eé]rito", case=False, regex=True, na=False
     )
     cpis = df[mask].copy()
+
+    # garante colunas opcionais (a API as vezes nao retorna data_inicio/fim)
+    for c in ("data_inicio", "data_fim"):
+        if c not in cpis.columns:
+            cpis[c] = pd.NaT
+
     if cpis.empty:
         return pd.DataFrame(columns=["id_orgao", "sigla_orgao", "nome_orgao",
+                                     "tipo_orgao",
                                      "data_inicio", "data_fim", "duracao_dias",
                                      "excedeu_prazo"])
 
@@ -336,12 +343,12 @@ def gold_cpis(silver):
     cpis["data_fim"] = pd.to_datetime(cpis["data_fim"], errors="coerce")
     cpis["duracao_dias"] = (cpis["data_fim"] - cpis["data_inicio"]).dt.days
     # prazo regimental tipico de CPI = 180 dias (regimento)
-    cpis["excedeu_prazo"] = cpis["duracao_dias"] > 180
+    cpis["excedeu_prazo"] = cpis["duracao_dias"].fillna(0) > 180
 
-    return cpis[[
-        "id_orgao", "sigla_orgao", "nome_orgao", "tipo_orgao",
-        "data_inicio", "data_fim", "duracao_dias", "excedeu_prazo",
-    ]].reset_index(drop=True)
+    cols = ["id_orgao", "sigla_orgao", "nome_orgao", "tipo_orgao",
+            "data_inicio", "data_fim", "duracao_dias", "excedeu_prazo"]
+    cols = [c for c in cols if c in cpis.columns]
+    return cpis[cols].reset_index(drop=True)
 
 
 # ----------------------------------------------------------------------
