@@ -47,7 +47,7 @@ ENDPOINTS = {
     },
     "deputado_despesas": {
         "path": "/deputados/{id}/despesas",
-        "params": {"itens": 100, "ano": 2024},
+        "params": {"itens": 100, "ano": 2024, "ordem": "DESC", "ordenarPor": "ano"},
         "paginated": True,
         "fanout_from": "deputados",
     },
