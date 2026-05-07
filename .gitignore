@@ -8,7 +8,7 @@ venv/
 *.egg-info/
 
 # data
-data/samples/*.jsonl
+# samples ficam versionados - o notebook do databricks le deles
 data/bronze/
 data/silver/
 data/gold/
