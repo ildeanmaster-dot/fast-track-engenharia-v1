@@ -68,15 +68,20 @@ def silver_frente_membros():
 
 def silver_orgaos():
     df = read_bronze("orgaos")
-    return df.selectExpr(
+    # campos data podem nao vir em todos os registros; coalesce ate ter algo
+    cols_avail = set(df.columns)
+    selects = [
         "id as id_orgao",
         "sigla as sigla_orgao",
         "nome as nome_orgao",
         "tipoOrgao as tipo_orgao",
         "codTipoOrgao as cod_tipo_orgao",
-        "to_date(dataInicio) as data_inicio",
-        "to_date(dataFim) as data_fim",
-    ).dropDuplicates(["id_orgao"])
+    ]
+    if "dataInicio" in cols_avail:
+        selects.append("to_date(dataInicio) as data_inicio")
+    if "dataFim" in cols_avail:
+        selects.append("to_date(dataFim) as data_fim")
+    return df.selectExpr(*selects).dropDuplicates(["id_orgao"])
 
 
 def silver_eventos():
@@ -345,9 +350,14 @@ write_gold("gold_ceap_mensal_partido", mensal_partido)
 
 # COMMAND ----------
 
-cpis = (orgs.filter(F.col("nome_orgao").rlike("(?i)CPI|CPMI|Inqu[eé]rito"))
-            .withColumn("duracao_dias", F.datediff("data_fim", "data_inicio"))
-            .withColumn("excedeu_prazo", F.col("duracao_dias") > 180))
+cpis = orgs.filter(F.col("nome_orgao").rlike("(?i)CPI|CPMI|Inqu[eé]rito"))
+# garante colunas data_inicio/data_fim mesmo se silver nao trouxer
+if "data_inicio" not in cpis.columns:
+    cpis = cpis.withColumn("data_inicio", F.lit(None).cast("date"))
+if "data_fim" not in cpis.columns:
+    cpis = cpis.withColumn("data_fim", F.lit(None).cast("date"))
+cpis = (cpis.withColumn("duracao_dias", F.datediff("data_fim", "data_inicio"))
+            .withColumn("excedeu_prazo", F.coalesce(F.col("duracao_dias") > 180, F.lit(False))))
 write_gold("gold_cpis", cpis)
 
 display(cpis)
